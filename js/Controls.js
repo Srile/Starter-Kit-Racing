@@ -28,8 +28,8 @@ export class Controls {
 		css.textContent = `
 			.touch-controls { position: absolute; bottom: 0; left: 0; right: 0; height: 50%; pointer-events: none; z-index: 10; }
 			.steer-zone { position: absolute; left: 0; top: 0; bottom: 0; width: 45%; pointer-events: auto; touch-action: none; }
-			.steer-base { position: absolute; bottom: 24px; left: 24px; width: 100px; height: 100px; border-radius: 50%; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.2); }
-			.steer-knob { position: absolute; top: 50%; left: 50%; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%; background: rgba(255,255,255,0.35); transition: transform 0.05s; }
+			.steer-base { position: absolute; bottom: 24px; left: 24px; width: 140px; height: 140px; border-radius: 50%; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.2); }
+			.steer-knob { position: absolute; top: 50%; left: 50%; width: 60px; height: 60px; margin: -30px 0 0 -30px; border-radius: 50%; background: rgba(255,255,255,0.35); transition: transform 0.05s; }
 			.btn-zone { position: absolute; right: 24px; bottom: 24px; pointer-events: auto; touch-action: none; }
 			.touch-btn { width: 76px; height: 76px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.25); color: rgba(255,255,255,0.5); font: bold 13px -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; user-select: none; -webkit-user-select: none; touch-action: none; position: absolute; }
 			.touch-btn.gas { background: rgba(80,180,80,0.25); right: 0; bottom: 80px; }
@@ -91,7 +91,7 @@ export class Controls {
 			if ( e.pointerId !== this.steerPointerId ) return;
 			const dx = e.clientX - this.steerStartX;
 			this.touchSteer = Math.max( - 1, Math.min( 1, dx / steerRange ) );
-			knob.style.transform = `translateX(${ this.touchSteer * 28 }px)`;
+			knob.style.transform = `translateX(${ this.touchSteer * 40 }px)`;
 
 		} );
 
