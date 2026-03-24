@@ -7,4 +7,5 @@ A JavaScript/Three.js port of [Kenney's Starter Kit Racing](https://github.com/K
 ## Credits
 
 - Game assets by [Kenney](https://kenney.nl/) (CC0)
+- Physics engine: [crashcat](https://github.com/isaac-mason/crashcat)
 - Ported to JavaScript with [Claude](https://claude.ai/)
