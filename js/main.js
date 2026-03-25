@@ -247,12 +247,14 @@ async function init() {
 
 	const timer = new THREE.Timer();
 
-	function animate() {
+	function animate( _timestamp, frame ) {
 
 		timer.update();
 		const dt = Math.min( timer.getDelta(), 1 / 30 );
 
 		const isXR = renderer.xr.isPresenting;
+
+		if ( isXR ) xr.update( frame );
 		const input = isXR
 			? ( xr.getInput() ?? { x: 0, z: 0 } )
 			: controls.update();

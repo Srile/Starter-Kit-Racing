@@ -16,6 +16,10 @@ export class XRManager {
 		this.vehicle = null;
 		this.buttonContainer = null;
 
+		// Plane detection state
+		this._xrScale = 1;
+		this._tablePlaced = false;
+
 		// Callbacks for session lifecycle
 		this.onSessionStart = null;
 		this.onSessionEnd = null;
@@ -65,7 +69,7 @@ export class XRManager {
 		this.mode = mode;
 
 		const type = mode === 'ar' ? 'immersive-ar' : 'immersive-vr';
-		const init = { optionalFeatures: [ 'local-floor', 'hand-tracking' ] };
+		const init = { optionalFeatures: [ 'local-floor', 'hand-tracking', 'plane-detection' ] };
 
 		const session = await navigator.xr.requestSession( type, init );
 
@@ -86,6 +90,8 @@ export class XRManager {
 			const b = this.trackBounds;
 			const trackSize = Math.max( b.halfWidth, b.halfDepth ) * 2;
 			const scale = FIT_SIZE / trackSize;
+			this._xrScale = scale;
+			this._tablePlaced = false;
 
 			this.gameContainer.scale.setScalar( scale );
 			this.gameContainer.position.set(
@@ -118,6 +124,38 @@ export class XRManager {
 			if ( this.onSessionEnd ) this.onSessionEnd();
 
 		} );
+
+	}
+
+	update( frame ) {
+
+		if ( ! frame?.detectedPlanes || this._tablePlaced ) return;
+		if ( ! this.gameContainer || ! this.trackBounds ) return;
+
+		const refSpace = this.renderer.xr.getReferenceSpace();
+		if ( ! refSpace ) return;
+
+		for ( const plane of frame.detectedPlanes ) {
+
+			if ( plane.semanticLabel !== 'table' ) continue;
+
+			const pose = frame.getPose( plane.planeSpace, refSpace );
+			if ( ! pose ) continue;
+
+			const p = pose.transform.position;
+			const b = this.trackBounds;
+			const s = this._xrScale;
+
+			this.gameContainer.position.set(
+				p.x - b.centerX * s,
+				p.y + 0.5 * s,
+				p.z - b.centerZ * s
+			);
+
+			this._tablePlaced = true;
+			break;
+
+		}
 
 	}
 
