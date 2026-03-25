@@ -194,20 +194,35 @@ export class XRManager {
 
 			const gp = source.gamepad;
 
-			// Right controller: trigger = gas, B = reverse
+			// Right controller: trigger = gas
 			if ( source.handedness === 'right' ) {
 
-				// Trigger (index 0) = accelerate
 				if ( gp.buttons[ 0 ] && gp.buttons[ 0 ].value > 0.1 ) {
 
 					z = gp.buttons[ 0 ].value;
 
+					if ( gp.hapticActuators && gp.hapticActuators[ 0 ] && gp.hapticActuators[ 0 ].pulse ) {
+
+						gp.hapticActuators[ 0 ].pulse( z * 0.2, 20 );
+
+					}
+
 				}
 
-				// B button (index 5) = reverse — overrides trigger
-				if ( gp.buttons[ 5 ] && gp.buttons[ 5 ].pressed ) {
+			}
 
-					z = - 1;
+			// Left controller: trigger = reverse
+			if ( source.handedness === 'left' ) {
+
+				if ( gp.buttons[ 0 ] && gp.buttons[ 0 ].value > 0.1 ) {
+
+					z = - gp.buttons[ 0 ].value;
+
+					if ( gp.hapticActuators && gp.hapticActuators[ 0 ] && gp.hapticActuators[ 0 ].pulse ) {
+
+						gp.hapticActuators[ 0 ].pulse( gp.buttons[ 0 ].value * 0.1, 20 );
+
+					}
 
 				}
 
