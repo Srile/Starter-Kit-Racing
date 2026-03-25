@@ -198,6 +198,7 @@ async function init() {
 	scene.add( trackCenterTarget );
 
 	const cam = new Camera();
+	cam.setVehicle( vehicle );
 	cam.targetPosition.copy( vehicle.spherePos );
 
 	// XR setup: camera rig and session callbacks

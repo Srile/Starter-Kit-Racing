@@ -41,6 +41,8 @@ export class Vehicle {
 
 		this.container = new THREE.Group();
 		this.bodyNode = null;
+		this.playerSeat = null;
+		this.steeringWheel = null;
 		this.wheels = [];
 		this.wheelFL = null;
 		this.wheelFR = null;
@@ -69,6 +71,14 @@ export class Vehicle {
 
 				child.rotation.order = 'YXZ';
 				this.bodyNode = child;
+
+			} else if ( name === 'player-seat' ) {
+
+				this.playerSeat = child;
+
+			} else if ( name === 'steer' ) {
+
+				this.steeringWheel = child;
 
 			} else if ( name.includes( 'wheel' ) ) {
 
@@ -277,6 +287,12 @@ export class Vehicle {
 		if ( this.wheelFR ) {
 
 			this.wheelFR.rotation.y = lerpAngle( this.wheelFR.rotation.y, -this.inputX / 1.5, dt * 10 );
+
+		}
+
+		if ( this.steeringWheel ) {
+
+			this.steeringWheel.rotation.z = lerpAngle( this.steeringWheel.rotation.y, this.inputX * Math.PI / 3, dt * 10 );
 
 		}
 
