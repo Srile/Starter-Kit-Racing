@@ -159,6 +159,13 @@ export class XRManager {
 		const refSpace = this.renderer.xr.getReferenceSpace();
 		if ( ! refSpace ) return;
 
+		let closestPose = null;
+		let minDistanceSq = Infinity;
+
+		camera.getWorldPosition( _camPos );
+
+
+		// Find the closest table
 		for ( const plane of frame.detectedPlanes ) {
 
 			if ( plane.semanticLabel !== 'table' ) continue;
@@ -167,15 +174,31 @@ export class XRManager {
 			if ( ! pose ) continue;
 
 			const p = pose.transform.position;
+			const dx = p.x - _camPos.x;
+			const dy = p.y - _camPos.y;
+			const dz = p.z - _camPos.z;
+			const distSq = dx * dx + dy * dy + dz * dz;
+
+			if ( distSq < minDistanceSq ) {
+
+				minDistanceSq = distSq;
+				closestPose = pose;
+
+			}
+
+		}
+
+		if ( closestPose ) {
+
+			const p = closestPose.transform.position;
 
 			this.gameContainer.position.set(
 				p.x - b.centerX * s,
-				p.y + 0.5 * s,
+				p.y,
 				p.z - b.centerZ * s
 			);
 
 			this._tablePlaced = true;
-			break;
 
 		}
 
