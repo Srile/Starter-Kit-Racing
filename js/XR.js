@@ -5,7 +5,6 @@ const FLOOR_DISTANCE = 0.8; // meters in front of the player
 const FIT_SIZE = 0.8; // meters — track fits within this on the floor
 
 const _camPos = new THREE.Vector3();
-const _camDir = new THREE.Vector3();
 
 export class XRManager {
 
@@ -73,7 +72,11 @@ export class XRManager {
 		this.mode = mode;
 
 		const type = mode === 'ar' ? 'immersive-ar' : 'immersive-vr';
-		const init = { optionalFeatures: [ 'local-floor', 'hand-tracking', 'plane-detection' ] };
+		const optionalFeatures = [ 'local-floor', 'hand-tracking' ];
+
+		if ( mode === 'ar' ) optionalFeatures.push( 'plane-detection' );
+
+		const init = { optionalFeatures };
 
 		const session = await navigator.xr.requestSession( type, init );
 
@@ -135,18 +138,15 @@ export class XRManager {
 		const b = this.trackBounds;
 		const s = this._xrScale;
 
-		// Place on floor in front of the player on the first frame
+		// Place on floor centered at the player's position
 		if ( ! this._floorPlaced ) {
 
 			camera.getWorldPosition( _camPos );
-			camera.getWorldDirection( _camDir );
-			_camDir.y = 0;
-			_camDir.normalize();
 
 			this.gameContainer.position.set(
-				_camPos.x + _camDir.x * FLOOR_DISTANCE - b.centerX * s,
-				0.5 * s,
-				_camPos.z + _camDir.z * FLOOR_DISTANCE - b.centerZ * s
+				_camPos.x - b.centerX * s,
+				0,
+				_camPos.z - b.centerZ * s - FLOOR_DISTANCE
 			);
 
 			this._floorPlaced = true;
