@@ -172,6 +172,7 @@ export class GameAudio {
 		const volume = THREE.MathUtils.clamp( remap( impactVelocity, 0, 6, 0.01, 1.0 ), 0.01, 1.0 );
 		sound.setVolume( volume );
 		sound.play();
+		sound.updateMatrixWorld( true );
 
 	}
 
