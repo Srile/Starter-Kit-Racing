@@ -248,7 +248,7 @@ async function init() {
 	const particles = new SmokeTrails( gameContainer );
 
 	const audio = new GameAudio();
-	audio.init( cam.camera );
+	audio.init( cam.camera, vehicleGroup );
 
 	const _forward = new THREE.Vector3();
 

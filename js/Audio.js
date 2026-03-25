@@ -21,15 +21,22 @@ export class GameAudio {
 
 	}
 
-	init( camera ) {
+	init( camera, vehicleGroup ) {
 
 		this.listener = new THREE.AudioListener();
 		camera.add( this.listener );
 
+		this.vehicleGroup = vehicleGroup;
+
 		const loader = new THREE.AudioLoader();
 
-		this.engineSound = new THREE.Audio( this.listener );
-		this.skidSound = new THREE.Audio( this.listener );
+		this.engineSound = new THREE.PositionalAudio( this.listener );
+		this.engineSound.setRefDistance( 5 );
+		this.skidSound = new THREE.PositionalAudio( this.listener );
+		this.skidSound.setRefDistance( 5 );
+
+		vehicleGroup.add( this.engineSound );
+		vehicleGroup.add( this.skidSound );
 
 		loader.load( 'audio/engine.ogg', ( buffer ) => {
 
@@ -55,8 +62,10 @@ export class GameAudio {
 
 			for ( let i = 0; i < 3; i ++ ) {
 
-				const sound = new THREE.Audio( this.listener );
+				const sound = new THREE.PositionalAudio( this.listener );
 				sound.setBuffer( buffer );
+				sound.setRefDistance( 5 );
+				vehicleGroup.add( sound );
 				this.impactPool.push( sound );
 
 			}
