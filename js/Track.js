@@ -334,6 +334,8 @@ export function buildTrack( scene, models, customCells ) {
 
 	}
 
+	return decoGroup;
+
 }
 
 export function placePiece( models, key, gx, gz, orient ) {

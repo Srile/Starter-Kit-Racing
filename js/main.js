@@ -144,7 +144,7 @@ async function init() {
 	gameContainer.add( dirLight );
 	gameContainer.add( hemiLight );
 
-	buildTrack( gameContainer, models, customCells );
+	const decoGroup = buildTrack( gameContainer, models, customCells );
 
 
 	const worldSettings = createWorldSettings();
@@ -205,11 +205,12 @@ async function init() {
 	scene.add( xr.cameraRig );
 	xr.createButtons();
 
-	xr.onSessionStart = () => {
+	xr.onSessionStart = ( mode ) => {
 
 		renderer.setEffects( [] );
 		scene.fog.near = 1000;
 		scene.fog.far = 1000;
+		if ( mode === 'ar' ) decoGroup.visible = false;
 
 	};
 
@@ -218,6 +219,7 @@ async function init() {
 		renderer.setEffects( [ bloomPass ] );
 		scene.fog.near = fogNear;
 		scene.fog.far = fogFar;
+		decoGroup.visible = true;
 
 	};
 

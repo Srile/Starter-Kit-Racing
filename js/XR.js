@@ -4,6 +4,9 @@ const DEAD_ZONE = 0.15;
 const FLOOR_DISTANCE = 0.8; // meters in front of the player
 const FIT_SIZE = 0.8; // meters — track fits within this on the floor
 
+const _camPos = new THREE.Vector3();
+const _camDir = new THREE.Vector3();
+
 export class XRManager {
 
 	constructor( renderer ) {
@@ -19,6 +22,7 @@ export class XRManager {
 		// Plane detection state
 		this._xrScale = 1;
 		this._tablePlaced = false;
+		this._floorPlaced = false;
 
 		// Callbacks for session lifecycle
 		this.onSessionStart = null;
@@ -84,21 +88,17 @@ export class XRManager {
 
 		this.renderer.xr.setSession( session );
 
-		// Scale and position the track on the floor in front of the player
+		// Compute scale but defer positioning until the first frame,
+		// when the camera's real-world position is available
 		if ( this.gameContainer && this.trackBounds ) {
 
 			const b = this.trackBounds;
 			const trackSize = Math.max( b.halfWidth, b.halfDepth ) * 2;
-			const scale = FIT_SIZE / trackSize;
-			this._xrScale = scale;
+			this._xrScale = FIT_SIZE / trackSize;
 			this._tablePlaced = false;
+			this._floorPlaced = false;
 
-			this.gameContainer.scale.setScalar( scale );
-			this.gameContainer.position.set(
-				- b.centerX * scale,
-				0.5 * scale,
-				- FLOOR_DISTANCE - b.centerZ * scale
-			);
+			this.gameContainer.scale.setScalar( this._xrScale );
 
 		}
 
@@ -129,8 +129,32 @@ export class XRManager {
 
 	update( frame ) {
 
-		if ( ! frame?.detectedPlanes || this._tablePlaced ) return;
 		if ( ! this.gameContainer || ! this.trackBounds ) return;
+
+		const camera = this.renderer.xr.getCamera();
+		const b = this.trackBounds;
+		const s = this._xrScale;
+
+		// Place on floor in front of the player on the first frame
+		if ( ! this._floorPlaced ) {
+
+			camera.getWorldPosition( _camPos );
+			camera.getWorldDirection( _camDir );
+			_camDir.y = 0;
+			_camDir.normalize();
+
+			this.gameContainer.position.set(
+				_camPos.x + _camDir.x * FLOOR_DISTANCE - b.centerX * s,
+				0.5 * s,
+				_camPos.z + _camDir.z * FLOOR_DISTANCE - b.centerZ * s
+			);
+
+			this._floorPlaced = true;
+
+		}
+
+		// Snap to a detected table if available
+		if ( this._tablePlaced || ! frame?.detectedPlanes ) return;
 
 		const refSpace = this.renderer.xr.getReferenceSpace();
 		if ( ! refSpace ) return;
@@ -143,8 +167,6 @@ export class XRManager {
 			if ( ! pose ) continue;
 
 			const p = pose.transform.position;
-			const b = this.trackBounds;
-			const s = this._xrScale;
 
 			this.gameContainer.position.set(
 				p.x - b.centerX * s,
