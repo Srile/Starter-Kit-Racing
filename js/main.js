@@ -9,6 +9,7 @@ import { buildTrack, decodeCells, computeSpawnPosition, computeTrackBounds } fro
 import { buildWallColliders, createSphereBody } from './Physics.js';
 import { SmokeTrails } from './Particles.js';
 import { GameAudio } from './Audio.js';
+import { XRManager } from './XR.js';
 
 
 const renderer = new THREE.WebGLRenderer( { antialias: true, outputBufferType: THREE.HalfFloatType } );
@@ -42,6 +43,7 @@ scene.add( dirLight );
 const hemiLight = new THREE.HemisphereLight( 0xc8d8e8, 0x7a8a5a, 1.5 );
 scene.add( hemiLight );
 
+const xr = new XRManager( renderer );
 
 window.addEventListener( 'resize', () => {
 
@@ -131,10 +133,18 @@ async function init() {
 	dirLight.shadow.camera.bottom = - shadowExtent;
 	dirLight.shadow.camera.updateProjectionMatrix();
 
-	scene.fog.near = groundSize * 0.4;
-	scene.fog.far = groundSize * 0.8;
+	const fogNear = groundSize * 0.4;
+	const fogFar = groundSize * 0.8;
+	scene.fog.near = fogNear;
+	scene.fog.far = fogFar;
 
-	buildTrack( scene, models, customCells );
+	// Game container: all visual game objects live here so AR can scale them
+	const gameContainer = new THREE.Group();
+	scene.add( gameContainer );
+	gameContainer.add( dirLight );
+	gameContainer.add( hemiLight );
+
+	buildTrack( gameContainer, models, customCells );
 
 
 	const worldSettings = createWorldSettings();
@@ -180,16 +190,40 @@ async function init() {
 	}
 
 	const vehicleGroup = vehicle.init( models[ 'vehicle-truck-yellow' ] );
-	scene.add( vehicleGroup );
+	gameContainer.add( vehicleGroup );
 
 	dirLight.target = vehicleGroup;
 
 	const cam = new Camera();
 	cam.targetPosition.copy( vehicle.spherePos );
 
+	// XR setup: camera rig and session callbacks
+	xr.gameContainer = gameContainer;
+	xr.trackBounds = bounds;
+	xr.vehicle = vehicle;
+	xr.cameraRig.add( cam.camera );
+	scene.add( xr.cameraRig );
+	xr.createButtons();
+
+	xr.onSessionStart = () => {
+
+		renderer.setEffects( [] );
+		scene.fog.near = 1000;
+		scene.fog.far = 1000;
+
+	};
+
+	xr.onSessionEnd = () => {
+
+		renderer.setEffects( [ bloomPass ] );
+		scene.fog.near = fogNear;
+		scene.fog.far = fogFar;
+
+	};
+
 	const controls = new Controls();
 
-	const particles = new SmokeTrails( scene );
+	const particles = new SmokeTrails( gameContainer );
 
 	const audio = new GameAudio();
 	audio.init( cam.camera );
@@ -215,12 +249,13 @@ async function init() {
 
 	function animate() {
 
-		requestAnimationFrame( animate );
-
 		timer.update();
 		const dt = Math.min( timer.getDelta(), 1 / 30 );
 
-		const input = controls.update();
+		const isXR = renderer.xr.isPresenting;
+		const input = isXR
+			? ( xr.getInput() ?? { x: 0, z: 0 } )
+			: controls.update();
 
 		updateWorld( world, contactListener, dt );
 
@@ -232,7 +267,12 @@ async function init() {
 			vehicle.spherePos.z - 5.3
 		);
 
-		cam.update( dt, vehicle.spherePos );
+		if ( ! isXR ) {
+
+			cam.update( dt, vehicle.spherePos );
+
+		}
+
 		particles.update( dt, vehicle );
 		audio.update( dt, vehicle.linearSpeed, input.z, vehicle.driftIntensity );
 
@@ -240,7 +280,7 @@ async function init() {
 
 	}
 
-	animate();
+	renderer.setAnimationLoop( animate );
 
 }
 
