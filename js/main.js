@@ -141,8 +141,8 @@ async function init() {
 	// Game container: all visual game objects live here so AR can scale them
 	const gameContainer = new THREE.Group();
 	scene.add( gameContainer );
-	gameContainer.add( dirLight );
-	gameContainer.add( hemiLight );
+	scene.add( dirLight );
+	scene.add( hemiLight );
 
 	const decoGroup = buildTrack( gameContainer, models, customCells );
 
@@ -194,6 +194,9 @@ async function init() {
 
 	dirLight.target = vehicleGroup;
 
+	const trackCenterTarget = new THREE.Object3D();
+	scene.add( trackCenterTarget );
+
 	const cam = new Camera();
 	cam.targetPosition.copy( vehicle.spherePos );
 
@@ -212,6 +215,15 @@ async function init() {
 		scene.fog.far = 1000;
 		if ( mode === 'ar' ) decoGroup.visible = false;
 
+		const s = xr._xrScale;
+		dirLight.shadow.camera.left = - shadowExtent * s;
+		dirLight.shadow.camera.right = shadowExtent * s;
+		dirLight.shadow.camera.top = shadowExtent * s;
+		dirLight.shadow.camera.bottom = - shadowExtent * s;
+		dirLight.shadow.camera.near = 0.5 * s;
+		dirLight.shadow.camera.far = 60 * s;
+		dirLight.shadow.camera.updateProjectionMatrix();
+
 	};
 
 	xr.onSessionEnd = () => {
@@ -220,6 +232,14 @@ async function init() {
 		scene.fog.near = fogNear;
 		scene.fog.far = fogFar;
 		decoGroup.visible = true;
+
+		dirLight.shadow.camera.left = - shadowExtent;
+		dirLight.shadow.camera.right = shadowExtent;
+		dirLight.shadow.camera.top = shadowExtent;
+		dirLight.shadow.camera.bottom = - shadowExtent;
+		dirLight.shadow.camera.near = 0.5;
+		dirLight.shadow.camera.far = 60;
+		dirLight.shadow.camera.updateProjectionMatrix();
 
 	};
 
@@ -248,6 +268,7 @@ async function init() {
 	};
 
 	const timer = new THREE.Timer();
+	const _vehiclePos = new THREE.Vector3();
 
 	function animate( _timestamp, frame ) {
 
@@ -265,10 +286,26 @@ async function init() {
 
 		vehicle.update( dt, input );
 
+		const s = isXR ? xr._xrScale : 1.0;
+		vehicleGroup.getWorldPosition( _vehiclePos );
+
+		if ( isXR ) {
+
+			_vehiclePos.set( bounds.centerX, 0, bounds.centerZ );
+			gameContainer.localToWorld( _vehiclePos );
+			trackCenterTarget.position.copy( _vehiclePos );
+			dirLight.target = trackCenterTarget;
+
+		} else {
+
+			dirLight.target = vehicleGroup;
+
+		}
+
 		dirLight.position.set(
-			vehicle.spherePos.x + 11.4,
-			15,
-			vehicle.spherePos.z - 5.3
+			_vehiclePos.x + 11.4 * s,
+			_vehiclePos.y + 15 * s,
+			_vehiclePos.z - 5.3 * s
 		);
 
 		if ( ! isXR ) {

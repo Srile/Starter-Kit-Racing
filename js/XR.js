@@ -138,15 +138,15 @@ export class XRManager {
 		const b = this.trackBounds;
 		const s = this._xrScale;
 
-		// Place on floor centered at the player's position
+		// Place 0.5m below the player and centered at the player's position
 		if ( ! this._floorPlaced ) {
 
 			camera.getWorldPosition( _camPos );
 
 			this.gameContainer.position.set(
 				_camPos.x - b.centerX * s,
-				0,
-				_camPos.z - b.centerZ * s - FLOOR_DISTANCE
+				_camPos.y - 0.5,
+				_camPos.z - b.centerZ * s
 			);
 
 			this._floorPlaced = true;
