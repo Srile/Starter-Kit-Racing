@@ -7,6 +7,7 @@ export class SmokeTrails {
 
 	constructor( scene ) {
 
+		this.parent = scene;
 		this.particles = [];
 
 		const map = new THREE.TextureLoader().load( 'sprites/smoke.png' );
@@ -100,8 +101,9 @@ export class SmokeTrails {
 		const p = this.particles[ this.emitIndex ];
 		this.emitIndex = ( this.emitIndex + 1 ) % POOL_SIZE;
 
-		// Get wheel world position, but use road surface Y
+		// Get wheel position in parent-local space (handles gameContainer scaling in XR)
 		wheel.getWorldPosition( _worldPos );
+		this.parent.worldToLocal( _worldPos );
 		_worldPos.y = vehicle.container.position.y + 0.05;
 
 		p.sprite.position.copy( _worldPos );

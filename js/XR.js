@@ -2,7 +2,7 @@ import * as THREE from 'three';
 
 const DEAD_ZONE = 0.15;
 const FLOOR_DISTANCE = 0.8; // meters in front of the player
-const FIT_SIZE = 0.8; // meters — track fits within this on the floor
+const FIT_SIZE = 1.5; // meters — track fits within this on the floor
 
 const _camPos = new THREE.Vector3();
 
