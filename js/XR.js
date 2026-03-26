@@ -3,7 +3,7 @@ import * as THREE from 'three';
 const DEAD_ZONE = 0.15;
 const FIT_SIZE = 1.5; // meters — track fits within this on the floor
 const FP_SCALE = 2; // first-person scene scale multiplier
-const WHEEL_MAX_ANGLE = Math.PI / 6; // max steering wheel rotation (180° each way)
+import { WHEEL_MAX_ANGLE } from './Vehicle.js';
 
 const _camPos = new THREE.Vector3();
 const _seatPos = new THREE.Vector3();

@@ -13,6 +13,8 @@ const _up = new THREE.Vector3( 0, 1, 0 );
 const SPEED_SCALE = 12.5;
 const LINEAR_DAMP = 0.1;
 
+export const WHEEL_MAX_ANGLE = Math.PI / 3;
+
 function lerpAngle( a, b, t ) {
 
 	let diff = b - a;
@@ -43,6 +45,7 @@ export class Vehicle {
 		this.bodyNode = null;
 		this.playerSeat = null;
 		this.steeringWheel = null;
+		this.steeringWheelRange = WHEEL_MAX_ANGLE;
 		this.wheels = [];
 		this.wheelFL = null;
 		this.wheelFR = null;
@@ -292,7 +295,7 @@ export class Vehicle {
 
 		if ( this.steeringWheel ) {
 
-			this.steeringWheel.rotation.z = lerpAngle( this.steeringWheel.rotation.z, this.inputX * Math.PI, dt * 10 );
+			this.steeringWheel.rotation.z = lerpAngle( this.steeringWheel.rotation.z, this.inputX * this.steeringWheelRange, dt * 10 );
 
 		}
 

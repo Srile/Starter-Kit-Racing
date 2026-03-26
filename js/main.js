@@ -293,7 +293,6 @@ async function init() {
 
 		const isXR = renderer.xr.isPresenting;
 
-		if ( isXR ) xr.update( frame );
 		const input = isXR
 			? ( xr.getInput() ?? { x: 0, z: 0 } )
 			: controls.update();
@@ -301,6 +300,8 @@ async function init() {
 		updateWorld( world, contactListener, dt );
 
 		vehicle.update( dt, input );
+
+		if ( isXR ) xr.update( frame );
 
 		const s = isXR ? xr.scale : 1.0;
 		vehicleGroup.getWorldPosition( _vehiclePos );
