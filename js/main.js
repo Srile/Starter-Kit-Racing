@@ -209,21 +209,43 @@ async function init() {
 	scene.add( xr.cameraRig );
 	xr.createButtons();
 
+	function updateShadowCamera( extent, near, far ) {
+
+		const cam = dirLight.shadow.camera;
+		cam.left = - extent;
+		cam.right = extent;
+		cam.top = extent;
+		cam.bottom = - extent;
+		cam.near = near;
+		cam.far = far;
+		cam.updateProjectionMatrix();
+
+	}
+
 	xr.onSessionStart = ( mode ) => {
 
 		renderer.setEffects( [] );
 		scene.fog.near = 1000;
 		scene.fog.far = 1000;
 		if ( mode === 'ar' ) decoGroup.visible = false;
+		const s = xr.scale;
+		updateShadowCamera( shadowExtent * s, 0.5 * s, 60 * s );
 
-		const s = xr._xrScale;
-		dirLight.shadow.camera.left = - shadowExtent * s;
-		dirLight.shadow.camera.right = shadowExtent * s;
-		dirLight.shadow.camera.top = shadowExtent * s;
-		dirLight.shadow.camera.bottom = - shadowExtent * s;
-		dirLight.shadow.camera.near = 0.5 * s;
-		dirLight.shadow.camera.far = 60 * s;
-		dirLight.shadow.camera.updateProjectionMatrix();
+	};
+
+	xr.onFirstPersonChanged = ( fp ) => {
+
+		if ( fp ) {
+
+			// Tight shadow frustum around the vehicle for sharp shadows
+			updateShadowCamera( 15, 0.5, 60 );
+
+		} else {
+
+			const s = xr.scale;
+			updateShadowCamera( shadowExtent * s, 0.5 * s, 60 * s );
+
+		}
 
 	};
 
@@ -233,14 +255,7 @@ async function init() {
 		scene.fog.near = fogNear;
 		scene.fog.far = fogFar;
 		decoGroup.visible = true;
-
-		dirLight.shadow.camera.left = - shadowExtent;
-		dirLight.shadow.camera.right = shadowExtent;
-		dirLight.shadow.camera.top = shadowExtent;
-		dirLight.shadow.camera.bottom = - shadowExtent;
-		dirLight.shadow.camera.near = 0.5;
-		dirLight.shadow.camera.far = 60;
-		dirLight.shadow.camera.updateProjectionMatrix();
+		updateShadowCamera( shadowExtent, 0.5, 60 );
 
 	};
 
@@ -287,10 +302,10 @@ async function init() {
 
 		vehicle.update( dt, input );
 
-		const s = isXR ? xr._xrScale : 1.0;
+		const s = isXR ? xr.scale : 1.0;
 		vehicleGroup.getWorldPosition( _vehiclePos );
 
-		if ( isXR ) {
+		if ( isXR && ! xr.firstPerson ) {
 
 			_vehiclePos.set( bounds.centerX, 0, bounds.centerZ );
 			gameContainer.localToWorld( _vehiclePos );

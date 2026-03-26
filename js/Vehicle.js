@@ -292,7 +292,7 @@ export class Vehicle {
 
 		if ( this.steeringWheel ) {
 
-			this.steeringWheel.rotation.z = lerpAngle( this.steeringWheel.rotation.y, this.inputX * Math.PI / 3, dt * 10 );
+			this.steeringWheel.rotation.z = lerpAngle( this.steeringWheel.rotation.z, this.inputX * Math.PI, dt * 10 );
 
 		}
 

@@ -1,10 +1,15 @@
 import * as THREE from 'three';
 
 const DEAD_ZONE = 0.15;
-const FLOOR_DISTANCE = 0.8; // meters in front of the player
 const FIT_SIZE = 1.5; // meters — track fits within this on the floor
+const FP_SCALE = 2; // first-person scene scale multiplier
+const WHEEL_MAX_ANGLE = Math.PI / 6; // max steering wheel rotation (180° each way)
 
 const _camPos = new THREE.Vector3();
+const _seatPos = new THREE.Vector3();
+const _handPos = new THREE.Vector3();
+const _yaw180 = new THREE.Quaternion().setFromAxisAngle( new THREE.Vector3( 0, 1, 0 ), Math.PI );
+const _wheelMatrix = new THREE.Matrix4();
 
 export class XRManager {
 
@@ -23,11 +28,52 @@ export class XRManager {
 		this._tablePlaced = false;
 		this._floorPlaced = false;
 
+		// First-person VR state
+		this.firstPerson = false;
+		this._prevAPressed = false;
+		this._leftGrabAngle = null;
+		this._rightGrabAngle = null;
+		this._wheelAngle = 0;
+
+		// Controller grip visualisation
+		this._leftGrip = null;
+		this._rightGrip = null;
+		this._leftSphere = null;
+		this._rightSphere = null;
+
 		// Callbacks for session lifecycle
 		this.onSessionStart = null;
 		this.onSessionEnd = null;
+		this.onFirstPersonChanged = null;
 
 		renderer.xr.enabled = true;
+
+	}
+
+	get scale() {
+
+		return this.firstPerson ? FP_SCALE : this._xrScale;
+
+	}
+
+	_createHandSpheres() {
+
+		const geo = new THREE.SphereGeometry( 0.03, 16, 16 );
+		const mat = new THREE.MeshStandardMaterial( { color: 0xffffff, roughness: 0.5 } );
+
+		this._leftSphere = new THREE.Mesh( geo, mat );
+		this._rightSphere = new THREE.Mesh( geo, mat );
+		this._leftSphere.visible = false;
+		this._rightSphere.visible = false;
+
+		this._leftGrip = this.renderer.xr.getControllerGrip( 0 );
+		this._rightGrip = this.renderer.xr.getControllerGrip( 1 );
+
+		this._leftGrip.add( this._leftSphere );
+		this._rightGrip.add( this._rightSphere );
+
+		this.cameraRig.add( this._leftGrip );
+		this.cameraRig.add( this._rightGrip );
 
 	}
 
@@ -64,6 +110,8 @@ export class XRManager {
 
 		document.body.appendChild( container );
 		this.buttonContainer = container;
+
+		this._createHandSpheres();
 
 	}
 
@@ -105,6 +153,9 @@ export class XRManager {
 
 		}
 
+		this.firstPerson = false;
+		this._prevAPressed = false;
+
 		if ( this.onSessionStart ) this.onSessionStart( mode );
 
 		if ( this.buttonContainer ) this.buttonContainer.style.display = 'none';
@@ -112,6 +163,7 @@ export class XRManager {
 		session.addEventListener( 'end', () => {
 
 			this.mode = null;
+			this.firstPerson = false;
 
 			if ( this.gameContainer ) {
 
@@ -121,7 +173,10 @@ export class XRManager {
 			}
 
 			this.cameraRig.position.set( 0, 0, 0 );
-			this.cameraRig.rotation.set( 0, 0, 0 );
+			this.cameraRig.quaternion.identity();
+
+			this._leftSphere.visible = false;
+			this._rightSphere.visible = false;
 
 			if ( this.buttonContainer ) this.buttonContainer.style.display = 'flex';
 			if ( this.onSessionEnd ) this.onSessionEnd();
@@ -130,9 +185,48 @@ export class XRManager {
 
 	}
 
+	_toggleFirstPerson() {
+
+		this.firstPerson = ! this.firstPerson;
+		this._leftGrabAngle = null;
+		this._rightGrabAngle = null;
+		this._wheelAngle = 0;
+
+		if ( this.firstPerson ) {
+
+			// Scaled-up scene for first-person driving
+			this.gameContainer.scale.setScalar( FP_SCALE );
+			this.gameContainer.position.set( 0, 0, 0 );
+
+		} else {
+
+			// Restore RC car scale
+			this.gameContainer.scale.setScalar( this._xrScale );
+			this._floorPlaced = false;
+			this._tablePlaced = false;
+
+			this.cameraRig.position.set( 0, 0, 0 );
+			this.cameraRig.quaternion.identity();
+
+		}
+
+		this._leftSphere.visible = this.firstPerson;
+		this._rightSphere.visible = this.firstPerson;
+
+		if ( this.onFirstPersonChanged ) this.onFirstPersonChanged( this.firstPerson );
+
+	}
+
 	update( frame ) {
 
 		if ( ! this.gameContainer || ! this.trackBounds ) return;
+
+		if ( this.firstPerson ) {
+
+			this._updateFirstPerson();
+			return;
+
+		}
 
 		const camera = this.renderer.xr.getCamera();
 		const b = this.trackBounds;
@@ -163,7 +257,6 @@ export class XRManager {
 		let minDistanceSq = Infinity;
 
 		camera.getWorldPosition( _camPos );
-
 
 		// Find the closest table
 		for ( const plane of frame.detectedPlanes ) {
@@ -204,21 +297,58 @@ export class XRManager {
 
 	}
 
+	_updateFirstPerson() {
+
+		const seat = this.vehicle?.playerSeat;
+		if ( ! seat ) return;
+
+		// Get the seat world position and the vehicle's rotation
+		seat.getWorldPosition( _seatPos );
+
+		// Position the rig so the user's floor-level origin maps to the seat
+		// The user's eyes are ~1.6m above the rig origin in local-floor
+		this.cameraRig.position.set( _seatPos.x, _seatPos.y - 1.6, _seatPos.z );
+
+		// Rotate the rig to match the vehicle, flipped 180° so the user faces forward
+		this.cameraRig.quaternion.copy( this.vehicle.container.quaternion ).multiply( _yaw180 );
+
+	}
+
+	_getHandWheelAngle( grip ) {
+
+		const wheel = this.vehicle.steeringWheel;
+		wheel.updateWorldMatrix( true, false );
+
+		// Transform hand position into the wheel's local space
+		_wheelMatrix.copy( wheel.matrixWorld ).invert();
+		grip.getWorldPosition( _handPos );
+		_handPos.applyMatrix4( _wheelMatrix );
+
+		// Angle on the wheel's XY plane (wheel rotates around Z)
+		return Math.atan2( _handPos.y, _handPos.x );
+
+	}
+
 	getInput() {
 
 		const session = this.renderer.xr.getSession();
 		if ( ! session ) return null;
 
 		let x = 0, z = 0;
+		let leftSqueezing = false;
+		let rightSqueezing = false;
+		let steerDelta = 0;
+		let steerHands = 0;
 
 		for ( const source of session.inputSources ) {
 
 			if ( ! source.gamepad ) continue;
 
 			const gp = source.gamepad;
+			const isLeft = source.handedness === 'left';
 
 			// Right controller: trigger = gas
-			if ( source.handedness === 'right' ) {
+			if ( ! isLeft ) {
 
 				if ( gp.buttons[ 0 ] && gp.buttons[ 0 ].value > 0.1 ) {
 
@@ -232,10 +362,20 @@ export class XRManager {
 
 				}
 
+				// A button (index 4) toggles first person — debounced
+				const aPressed = gp.buttons[ 4 ] && gp.buttons[ 4 ].pressed;
+				if ( aPressed && ! this._prevAPressed && this.mode === 'vr' ) {
+
+					this._toggleFirstPerson();
+
+				}
+
+				this._prevAPressed = aPressed;
+
 			}
 
 			// Left controller: trigger = reverse
-			if ( source.handedness === 'left' ) {
+			if ( isLeft ) {
 
 				if ( gp.buttons[ 0 ] && gp.buttons[ 0 ].value > 0.1 ) {
 
@@ -251,18 +391,76 @@ export class XRManager {
 
 			}
 
-			// Joystick X from either controller for steering
-			// Quest: thumbstick at axes[2], fallback to axes[0]
-			const ax2 = gp.axes.length > 2 ? gp.axes[ 2 ] : 0;
-			const ax0 = gp.axes[ 0 ] ?? 0;
-			const stickX = Math.abs( ax2 ) > DEAD_ZONE ? ax2
-				: ( Math.abs( ax0 ) > DEAD_ZONE ? ax0 : 0 );
+			// First-person steering: squeeze to grab wheel, rotate around its axis
+			if ( this.firstPerson && this.vehicle.steeringWheel ) {
 
-			if ( Math.abs( stickX ) > Math.abs( x ) ) {
+				const squeeze = gp.buttons[ 1 ] && gp.buttons[ 1 ].pressed;
 
-				x = stickX;
+				if ( squeeze ) {
+
+					const grip = isLeft ? this._leftGrip : this._rightGrip;
+					const angle = this._getHandWheelAngle( grip );
+					const prevAngle = isLeft ? this._leftGrabAngle : this._rightGrabAngle;
+
+					if ( prevAngle !== null ) {
+
+						// Compute angular delta, normalized to [-PI, PI]
+						let delta = angle - prevAngle;
+						if ( delta > Math.PI ) delta -= Math.PI * 2;
+						if ( delta < - Math.PI ) delta += Math.PI * 2;
+
+						steerDelta += delta;
+						steerHands ++;
+
+					}
+
+					if ( isLeft ) { this._leftGrabAngle = angle; leftSqueezing = true; }
+					else { this._rightGrabAngle = angle; rightSqueezing = true; }
+
+				}
 
 			}
+
+			// Joystick X from either controller for steering (RC car mode)
+			if ( ! this.firstPerson ) {
+
+				const ax2 = gp.axes.length > 2 ? gp.axes[ 2 ] : 0;
+				const ax0 = gp.axes[ 0 ] ?? 0;
+				const stickX = Math.abs( ax2 ) > DEAD_ZONE ? ax2
+					: ( Math.abs( ax0 ) > DEAD_ZONE ? ax0 : 0 );
+
+				if ( Math.abs( stickX ) > Math.abs( x ) ) {
+
+					x = stickX;
+
+				}
+
+			}
+
+		}
+
+		// Release grab angles for hands that stopped squeezing
+		if ( ! leftSqueezing ) this._leftGrabAngle = null;
+		if ( ! rightSqueezing ) this._rightGrabAngle = null;
+
+		if ( this.firstPerson ) {
+
+			if ( steerHands > 0 ) {
+
+				// Average the delta when both hands are steering
+				this._wheelAngle += steerDelta / steerHands;
+				this._wheelAngle = THREE.MathUtils.clamp(
+					this._wheelAngle, - WHEEL_MAX_ANGLE, WHEEL_MAX_ANGLE
+				);
+
+			} else {
+
+				// Spring back to center when released
+				this._wheelAngle = 0;
+
+			}
+
+			x = this._wheelAngle / WHEEL_MAX_ANGLE;
 
 		}
 
