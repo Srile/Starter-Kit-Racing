@@ -237,13 +237,17 @@ async function init() {
 
 		if ( fp ) {
 
-			// Tight shadow frustum around the vehicle for sharp shadows
+			// Tight shadow frustum and extended camera far plane for scaled-up scene
 			updateShadowCamera( 15, 0.5, 60 );
+			cam.camera.far = 60 * xr.scale;
+			cam.camera.updateProjectionMatrix();
 
 		} else {
 
 			const s = xr.scale;
 			updateShadowCamera( shadowExtent * s, 0.5 * s, 60 * s );
+			cam.camera.far = 60;
+			cam.camera.updateProjectionMatrix();
 
 		}
 

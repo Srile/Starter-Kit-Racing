@@ -2,7 +2,8 @@ import * as THREE from 'three';
 
 const DEAD_ZONE = 0.15;
 const FIT_SIZE = 1.5; // meters — track fits within this on the floor
-const FP_SCALE = 2; // first-person scene scale multiplier
+const FP_SCALE = 4; // first-person scene scale multiplier
+const STEER_SENSITIVITY = 3; // angular multiplier for faster steering
 import { WHEEL_MAX_ANGLE } from './Vehicle.js';
 
 const _camPos = new THREE.Vector3();
@@ -31,15 +32,13 @@ export class XRManager {
 		// First-person VR state
 		this.firstPerson = false;
 		this._prevAPressed = false;
-		this._leftGrabAngle = null;
-		this._rightGrabAngle = null;
+		this._grabAngles = [ null, null ];
 		this._wheelAngle = 0;
+		this._fpCameraOffset = new THREE.Vector3();
 
-		// Controller grip visualisation
-		this._leftGrip = null;
-		this._rightGrip = null;
-		this._leftSphere = null;
-		this._rightSphere = null;
+		// Controller grip visualisation (indexed by inputSource order)
+		this._grips = [ null, null ];
+		this._spheres = [ null, null ];
 
 		// Callbacks for session lifecycle
 		this.onSessionStart = null;
@@ -61,19 +60,19 @@ export class XRManager {
 		const geo = new THREE.SphereGeometry( 0.03, 16, 16 );
 		const mat = new THREE.MeshStandardMaterial( { color: 0xffffff, roughness: 0.5 } );
 
-		this._leftSphere = new THREE.Mesh( geo, mat );
-		this._rightSphere = new THREE.Mesh( geo, mat );
-		this._leftSphere.visible = false;
-		this._rightSphere.visible = false;
+		for ( let i = 0; i < 2; i ++ ) {
 
-		this._leftGrip = this.renderer.xr.getControllerGrip( 0 );
-		this._rightGrip = this.renderer.xr.getControllerGrip( 1 );
+			const sphere = new THREE.Mesh( geo, mat );
+			sphere.visible = false;
+			this._spheres[ i ] = sphere;
 
-		this._leftGrip.add( this._leftSphere );
-		this._rightGrip.add( this._rightSphere );
+			const grip = this.renderer.xr.getControllerGrip( i );
+			grip.add( sphere );
+			this._grips[ i ] = grip;
 
-		this.cameraRig.add( this._leftGrip );
-		this.cameraRig.add( this._rightGrip );
+			this.cameraRig.add( grip );
+
+		}
 
 	}
 
@@ -175,8 +174,7 @@ export class XRManager {
 			this.cameraRig.position.set( 0, 0, 0 );
 			this.cameraRig.quaternion.identity();
 
-			this._leftSphere.visible = false;
-			this._rightSphere.visible = false;
+			for ( const sphere of this._spheres ) sphere.visible = false;
 
 			if ( this.buttonContainer ) this.buttonContainer.style.display = 'flex';
 			if ( this.onSessionEnd ) this.onSessionEnd();
@@ -188,8 +186,8 @@ export class XRManager {
 	_toggleFirstPerson() {
 
 		this.firstPerson = ! this.firstPerson;
-		this._leftGrabAngle = null;
-		this._rightGrabAngle = null;
+		this._grabAngles[ 0 ] = null;
+		this._grabAngles[ 1 ] = null;
 		this._wheelAngle = 0;
 
 		if ( this.firstPerson ) {
@@ -197,6 +195,10 @@ export class XRManager {
 			// Scaled-up scene for first-person driving
 			this.gameContainer.scale.setScalar( FP_SCALE );
 			this.gameContainer.position.set( 0, 0, 0 );
+
+			// Snapshot the camera's local position so head tracking stays free
+			const camera = this.renderer.xr.getCamera();
+			this._fpCameraOffset.copy( camera.position );
 
 		} else {
 
@@ -210,8 +212,7 @@ export class XRManager {
 
 		}
 
-		this._leftSphere.visible = this.firstPerson;
-		this._rightSphere.visible = this.firstPerson;
+		for ( const sphere of this._spheres ) sphere.visible = this.firstPerson;
 
 		if ( this.onFirstPersonChanged ) this.onFirstPersonChanged( this.firstPerson );
 
@@ -302,15 +303,21 @@ export class XRManager {
 		const seat = this.vehicle?.playerSeat;
 		if ( ! seat ) return;
 
-		// Get the seat world position and the vehicle's rotation
+		// Get the seat world position
 		seat.getWorldPosition( _seatPos );
 
-		// Position the rig so the user's floor-level origin maps to the seat
-		// The user's eyes are ~1.6m above the rig origin in local-floor
-		this.cameraRig.position.set( _seatPos.x, _seatPos.y - 1.6, _seatPos.z );
-
-		// Rotate the rig to match the vehicle, flipped 180° so the user faces forward
+		// Set rig rotation first so the position offset is in the correct space
 		this.cameraRig.quaternion.copy( this.vehicle.container.quaternion ).multiply( _yaw180 );
+
+		// Use the fixed camera offset captured at toggle time so head tracking stays free
+		_camPos.copy( this._fpCameraOffset ).applyQuaternion( this.cameraRig.quaternion );
+
+		// Position the rig so the initial head position maps to the seat
+		this.cameraRig.position.set(
+			_seatPos.x - _camPos.x,
+			_seatPos.y - _camPos.y,
+			_seatPos.z - _camPos.z
+		);
 
 	}
 
@@ -335,13 +342,14 @@ export class XRManager {
 		if ( ! session ) return null;
 
 		let x = 0, z = 0;
-		let leftSqueezing = false;
-		let rightSqueezing = false;
+		const squeezing = [ false, false ];
 		let steerDelta = 0;
 		let steerHands = 0;
 
-		for ( const source of session.inputSources ) {
+		const sources = session.inputSources;
+		for ( let i = 0; i < sources.length; i ++ ) {
 
+			const source = sources[ i ];
 			if ( ! source.gamepad ) continue;
 
 			const gp = source.gamepad;
@@ -395,12 +403,13 @@ export class XRManager {
 			if ( this.firstPerson && this.vehicle.steeringWheel ) {
 
 				const squeeze = gp.buttons[ 1 ] && gp.buttons[ 1 ].pressed;
+				const grip = this._grips[ i ];
+				const sphere = this._spheres[ i ];
 
-				if ( squeeze ) {
+				if ( squeeze && grip ) {
 
-					const grip = isLeft ? this._leftGrip : this._rightGrip;
 					const angle = this._getHandWheelAngle( grip );
-					const prevAngle = isLeft ? this._leftGrabAngle : this._rightGrabAngle;
+					const prevAngle = this._grabAngles[ i ];
 
 					if ( prevAngle !== null ) {
 
@@ -409,13 +418,26 @@ export class XRManager {
 						if ( delta > Math.PI ) delta -= Math.PI * 2;
 						if ( delta < - Math.PI ) delta += Math.PI * 2;
 
-						steerDelta += delta;
+						steerDelta += delta * STEER_SENSITIVITY;
 						steerHands ++;
+
+					} else {
+
+						// Attach hand sphere to steering wheel on grab
+						const wheel = this.vehicle.steeringWheel;
+						grip.getWorldPosition( _handPos );
+						wheel.worldToLocal( _handPos );
+						wheel.add( sphere );
+						sphere.position.copy( _handPos );
+
+						// Compensate for wheel's world scale so sphere stays the same size
+						wheel.getWorldScale( _handPos );
+						sphere.scale.set( 1 / _handPos.x, 1 / _handPos.y, 1 / _handPos.z );
 
 					}
 
-					if ( isLeft ) { this._leftGrabAngle = angle; leftSqueezing = true; }
-					else { this._rightGrabAngle = angle; rightSqueezing = true; }
+					this._grabAngles[ i ] = angle;
+					squeezing[ i ] = true;
 
 				}
 
@@ -439,9 +461,19 @@ export class XRManager {
 
 		}
 
-		// Release grab angles for hands that stopped squeezing
-		if ( ! leftSqueezing ) this._leftGrabAngle = null;
-		if ( ! rightSqueezing ) this._rightGrabAngle = null;
+		// Release grab angles and reparent spheres back to grips
+		for ( let i = 0; i < 2; i ++ ) {
+
+			if ( ! squeezing[ i ] && this._grabAngles[ i ] !== null ) {
+
+				this._grabAngles[ i ] = null;
+				this._grips[ i ].add( this._spheres[ i ] );
+				this._spheres[ i ].position.set( 0, 0, 0 );
+				this._spheres[ i ].scale.set( 1, 1, 1 );
+
+			}
+
+		}
 
 		if ( this.firstPerson ) {
 

@@ -10,7 +10,6 @@ const _mat4 = new THREE.Matrix4();
 const _quat = new THREE.Quaternion();
 const _up = new THREE.Vector3( 0, 1, 0 );
 
-const SPEED_SCALE = 12.5;
 const LINEAR_DAMP = 0.1;
 
 export const WHEEL_MAX_ANGLE = Math.PI / 3;

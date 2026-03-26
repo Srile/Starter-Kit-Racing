@@ -11,7 +11,12 @@ Play on a Meta Quest or any WebXR-capable device:
 - **VR mode** — the track is scaled down and placed on the floor in front of you like an RC car
 - **AR mode** — same as VR, but with passthrough and decorations hidden for a cleaner look
 - **Table snap** — if a table is detected via plane tracking, the track automatically snaps onto it
-- **Controls** — trigger for gas, B for reverse, joystick X-axis for steering
+- **Controls** — right trigger for gas, left trigger for reverse, joystick X-axis for steering
+
+## First-Person Mode
+
+- **Desktop** — press **C** to toggle first-person camera inside the car
+- **VR** — press the **A button** (right controller) to toggle first-person driving; squeeze to grab the steering wheel and rotate your hand to steer
 
 ## Credits
 
