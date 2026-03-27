@@ -2,6 +2,13 @@ import * as THREE from 'three';
 
 const _worldPos = new THREE.Vector3();
 const _worldLook = new THREE.Vector3();
+const _behind = new THREE.Vector3();
+
+// Camera modes
+const MODE_ISOMETRIC = 0;
+const MODE_THIRD_PERSON = 1;
+const MODE_FIRST_PERSON = 2;
+const MODE_COUNT = 3;
 
 export class Camera {
 
@@ -16,8 +23,13 @@ export class Camera {
 		this.camera.position.copy( this.offset );
 		this.camera.lookAt( 0, 0, 0 );
 
-		this.firstPerson = false;
+		this.mode = MODE_ISOMETRIC;
 		this.vehicle = null;
+
+		// Third-person chase camera state
+		this.chasePos = new THREE.Vector3();
+		this.chaseLook = new THREE.Vector3();
+		this.chaseInitialized = false;
 
 		window.addEventListener( 'resize', () => {
 
@@ -28,7 +40,7 @@ export class Camera {
 
 		window.addEventListener( 'keydown', ( e ) => {
 
-			if ( e.code === 'KeyC' ) this.toggleFirstPerson();
+			if ( e.code === 'KeyC' ) this.cycleMode();
 
 		} );
 
@@ -40,19 +52,27 @@ export class Camera {
 
 	}
 
-	toggleFirstPerson() {
+	cycleMode() {
 
-		this.firstPerson = ! this.firstPerson;
+		this.mode = ( this.mode + 1 ) % MODE_COUNT;
 
-		if ( this.firstPerson ) {
+		switch ( this.mode ) {
 
-			this.camera.fov = 100;
-			this.camera.near = 0.05;
+			case MODE_ISOMETRIC:
+				this.camera.fov = 40;
+				this.camera.near = 0.1;
+				break;
 
-		} else {
+			case MODE_THIRD_PERSON:
+				this.camera.fov = 60;
+				this.camera.near = 0.1;
+				this.chaseInitialized = false;
+				break;
 
-			this.camera.fov = 40;
-			this.camera.near = 0.1;
+			case MODE_FIRST_PERSON:
+				this.camera.fov = 100;
+				this.camera.near = 0.05;
+				break;
 
 		}
 
@@ -60,9 +80,15 @@ export class Camera {
 
 	}
 
+	get firstPerson() {
+
+		return this.mode === MODE_FIRST_PERSON;
+
+	}
+
 	update( dt, target ) {
 
-		if ( this.firstPerson && this.vehicle?.playerSeat ) {
+		if ( this.mode === MODE_FIRST_PERSON && this.vehicle?.playerSeat ) {
 
 			const seat = this.vehicle.playerSeat;
 
@@ -75,6 +101,33 @@ export class Camera {
 
 			this.camera.position.copy( _worldPos );
 			this.camera.lookAt( _worldLook );
+
+		} else if ( this.mode === MODE_THIRD_PERSON && this.vehicle ) {
+
+			const container = this.vehicle.container;
+
+			// Desired position: behind and above the vehicle
+			_behind.set( 0, 2.5, - 5 ).applyQuaternion( container.quaternion );
+			_worldPos.copy( target ).add( _behind );
+
+			// Look-at target: slightly ahead of the vehicle
+			_worldLook.set( 0, 0.5, 4 ).applyQuaternion( container.quaternion ).add( target );
+
+			if ( ! this.chaseInitialized ) {
+
+				this.chasePos.copy( _worldPos );
+				this.chaseLook.copy( _worldLook );
+				this.chaseInitialized = true;
+
+			}
+
+			// Smooth follow
+			const followSpeed = 5;
+			this.chasePos.lerp( _worldPos, 1 - Math.exp( - followSpeed * dt ) );
+			this.chaseLook.lerp( _worldLook, 1 - Math.exp( - followSpeed * dt ) );
+
+			this.camera.position.copy( this.chasePos );
+			this.camera.lookAt( this.chaseLook );
 
 		} else {
 
