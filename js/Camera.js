@@ -3,12 +3,20 @@ import * as THREE from 'three';
 const _worldPos = new THREE.Vector3();
 const _worldLook = new THREE.Vector3();
 const _behind = new THREE.Vector3();
+const _right = new THREE.Vector3();
+const _up = new THREE.Vector3( 0, 1, 0 );
+
+const DEG2RAD = Math.PI / 180;
 
 // Camera modes
 const MODE_ISOMETRIC = 0;
 const MODE_THIRD_PERSON = 1;
 const MODE_FIRST_PERSON = 2;
 const MODE_COUNT = 3;
+
+// Face-tracking settings
+const POSITION_SHIFT = 0.5; // subtle world-unit lean
+const FRUSTUM_SHIFT = 1.2; // off-axis frustum strength (primary effect)
 
 export class Camera {
 
@@ -25,11 +33,16 @@ export class Camera {
 
 		this.mode = MODE_ISOMETRIC;
 		this.vehicle = null;
+		this.faceTracker = null;
 
 		// Third-person chase camera state
 		this.chasePos = new THREE.Vector3();
 		this.chaseLook = new THREE.Vector3();
 		this.chaseInitialized = false;
+
+		// Smoothed face tracking values
+		this.smoothedFx = 0;
+		this.smoothedFy = 0;
 
 		window.addEventListener( 'resize', () => {
 
@@ -52,6 +65,12 @@ export class Camera {
 
 	}
 
+	setFaceTracker( tracker ) {
+
+		this.faceTracker = tracker;
+
+	}
+
 	cycleMode() {
 
 		this.mode = ( this.mode + 1 ) % MODE_COUNT;
@@ -70,12 +89,13 @@ export class Camera {
 				break;
 
 			case MODE_FIRST_PERSON:
-				this.camera.fov = 100;
+				this.camera.fov = 90;
 				this.camera.near = 0.05;
 				break;
 
 		}
 
+		this.camera.projectionMatrixAutoUpdate = true;
 		this.camera.updateProjectionMatrix();
 
 	}
@@ -88,6 +108,18 @@ export class Camera {
 
 	update( dt, target ) {
 
+		const faceActive = this.faceTracker?.active;
+
+		// Smooth face input
+		const rawFx = faceActive ? this.faceTracker.x : 0;
+		const rawFy = faceActive ? this.faceTracker.y : 0;
+
+		this.smoothedFx = this.smoothedFx * 0.82 + rawFx * 0.18;
+		this.smoothedFy = this.smoothedFy * 0.82 + rawFy * 0.18;
+
+		const fx = this.smoothedFx;
+		const fy = this.smoothedFy;
+
 		if ( this.mode === MODE_FIRST_PERSON && this.vehicle?.playerSeat ) {
 
 			const seat = this.vehicle.playerSeat;
@@ -98,6 +130,17 @@ export class Camera {
 			// Look ahead along the seat's forward (+Z) direction
 			_worldLook.set( 0, 0, 2 );
 			seat.localToWorld( _worldLook );
+
+			// Face tracking: steer the look direction with head movement
+			if ( faceActive ) {
+
+				_worldLook.sub( _worldPos ); // look direction
+				_right.crossVectors( _worldLook, _up ).normalize();
+				_worldLook.applyAxisAngle( _up, - fx * 0.8 );
+				_worldLook.applyAxisAngle( _right, fy * 0.4 );
+				_worldLook.add( _worldPos );
+
+			}
 
 			this.camera.position.copy( _worldPos );
 			this.camera.lookAt( _worldLook );
@@ -126,7 +169,10 @@ export class Camera {
 			this.chasePos.lerp( _worldPos, 1 - Math.exp( - followSpeed * dt ) );
 			this.chaseLook.lerp( _worldLook, 1 - Math.exp( - followSpeed * dt ) );
 
+			// Subtle position lean only — frustum does the heavy lifting
 			this.camera.position.copy( this.chasePos );
+			this.camera.position.x += fx * POSITION_SHIFT;
+			this.camera.position.y += fy * POSITION_SHIFT;
 			this.camera.lookAt( this.chaseLook );
 
 		} else {
@@ -134,7 +180,35 @@ export class Camera {
 			this.targetPosition.lerp( target, dt * 4 );
 
 			this.camera.position.copy( this.targetPosition ).add( this.offset );
+			this.camera.position.x += fx * POSITION_SHIFT;
+			this.camera.position.y += fy * POSITION_SHIFT;
 			this.camera.lookAt( this.targetPosition );
+
+		}
+
+		// Off-axis frustum for head-coupled "window into the world" effect
+		if ( faceActive && this.mode !== MODE_FIRST_PERSON ) {
+
+			const cam = this.camera;
+			cam.projectionMatrixAutoUpdate = false;
+
+			const near = cam.near;
+			const halfH = near * Math.tan( cam.fov * DEG2RAD * 0.5 );
+			const halfW = halfH * cam.aspect;
+
+			const sx = - fx * halfW * FRUSTUM_SHIFT;
+			const sy = - fy * halfH * FRUSTUM_SHIFT;
+
+			cam.projectionMatrix.makePerspective(
+				- halfW + sx, halfW + sx,
+				halfH + sy, - halfH + sy,
+				near, cam.far
+			);
+			cam.projectionMatrixInverse.copy( cam.projectionMatrix ).invert();
+
+		} else {
+
+			this.camera.projectionMatrixAutoUpdate = true;
 
 		}
 

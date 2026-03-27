@@ -10,6 +10,7 @@ import { buildWallColliders, createSphereBody } from './Physics.js';
 import { SmokeTrails } from './Particles.js';
 import { GameAudio } from './Audio.js';
 import { XRManager } from './XR.js';
+import { FaceTracker } from './FaceTracker.js';
 
 
 const renderer = new THREE.WebGLRenderer( { antialias: true, outputBufferType: THREE.HalfFloatType } );
@@ -197,9 +198,18 @@ async function init() {
 	const trackCenterTarget = new THREE.Object3D();
 	scene.add( trackCenterTarget );
 
+	const faceTracker = new FaceTracker();
+
 	const cam = new Camera();
 	cam.setVehicle( vehicle );
+	cam.setFaceTracker( faceTracker );
 	cam.targetPosition.copy( vehicle.spherePos );
+
+	window.addEventListener( 'keydown', ( e ) => {
+
+		if ( e.code === 'KeyF' ) faceTracker.toggle();
+
+	} );
 
 	// XR setup: camera rig and session callbacks
 	xr.gameContainer = gameContainer;
@@ -331,6 +341,7 @@ async function init() {
 
 		if ( ! isXR ) {
 
+			faceTracker.update();
 			cam.update( dt, vehicle.spherePos );
 
 		}
