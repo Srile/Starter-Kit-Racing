@@ -3,9 +3,13 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { createWorldSettings, createWorld, addBroadphaseLayer, addObjectLayer, enableCollision, registerAll, updateWorld, rigidBody, box, MotionType } from 'crashcat';
 import { Vehicle } from './Vehicle.js';
+import { AIVehicle } from './AIVehicle.js';
 import { Camera } from './Camera.js';
 import { Controls } from './Controls.js';
-import { buildTrack, decodeCells, computeSpawnPosition, computeTrackBounds } from './Track.js';
+import { buildTrack, decodeCells, computeSpawnPosition, computeTrackBounds, TRACK_CELLS } from './Track.js';
+import { generateRaceLine } from './RaceLine.js';
+import { RaceManager, RaceState } from './RaceManager.js';
+import { RaceHUD } from './RaceHUD.js';
 import { buildWallColliders, createSphereBody } from './Physics.js';
 import { SmokeTrails } from './Particles.js';
 import { GameAudio } from './Audio.js';
@@ -147,6 +151,82 @@ async function init() {
 
 	const decoGroup = buildTrack( gameContainer, models, customCells );
 
+	// ─── Race System ───────────────────────────────────────────
+	const cells = customCells || TRACK_CELLS;
+	const raceLine = generateRaceLine( cells );
+	const raceManager = new RaceManager( raceLine, 3 );
+
+	// Compute start grid: 2×2 stagger on the finish line piece
+	function computeStartGrid( rl, numCars = 4 ) {
+
+		if ( rl.length < 3 ) return null;
+
+		const c0 = rl[ 0 ], c1 = rl[ 1 ];
+		const dx = c1.worldX - c0.worldX, dz = c1.worldZ - c0.worldZ;
+		const mag = Math.sqrt( dx * dx + dz * dz );
+		const fx = dx / mag, fz = dz / mag;
+		const rx = fz, rz = - fx;
+
+		const LANE = 1.1;
+		const base = rl[ 0 ];
+		const angle = Math.atan2( fx, fz );
+
+		const grid = [];
+		for ( let i = 0; i < numCars; i ++ ) {
+
+			const row = Math.floor( i / 2 );
+			const col = i % 2;
+			const forwardOffset = 1.4 - row * 2.8;
+			const rightOffset = col === 0 ? LANE : - LANE;
+
+			grid.push( {
+				position: [ base.worldX + fx * forwardOffset + rx * rightOffset, 0.5, base.worldZ + fz * forwardOffset + rz * rightOffset ],
+				angle,
+				startCell: 0,
+			} );
+
+		}
+
+		return grid;
+
+	}
+
+	const carsParam = new URLSearchParams( window.location.search ).get( 'cars' );
+	const TOTAL_CARS = carsParam ? ( parseInt( carsParam, 10 ) || 4 ) : 4;
+	const startGrid = computeStartGrid( raceLine, TOTAL_CARS );
+
+	const raceHUD = new RaceHUD();
+	raceHUD.init();
+
+	raceManager.onCountdownTick = ( value ) => {
+
+		raceHUD.showCountdown( value );
+
+	};
+
+	raceManager.onLapComplete = ( lap ) => {
+
+		if ( lap === raceManager.totalLaps - 1 ) {
+
+			raceHUD.showLapFlash( 'FINAL LAP!' );
+
+		} else if ( lap < raceManager.totalLaps ) {
+
+			raceHUD.showLapFlash( `Lap ${ lap + 1 }` );
+
+		}
+
+	};
+
+	raceManager.onRaceFinished = ( results ) => {
+
+		raceHUD.dispose();
+
+	};
+
+	// Start the countdown after a short delay
+	setTimeout( () => raceManager.start(), 500 );
+
 
 	const worldSettings = createWorldSettings();
 	worldSettings.gravity = [ 0, - 9.81, 0 ];
@@ -175,23 +255,52 @@ async function init() {
 		restitution: 0.0,
 	} );
 
-	const sphereBody = createSphereBody( world, spawn ? spawn.position : null );
+	// ─── Player Vehicle ─────────────────────────────────────────
+	const playerGrid = startGrid ? startGrid[ TOTAL_CARS - 1 ] : { position: spawn ? spawn.position : [ 3.5, 0.5, 5 ], angle: spawn ? spawn.angle : 0, startCell: 0 };
+	const sphereBody = createSphereBody( world, playerGrid.position );
 
 	const vehicle = new Vehicle();
 	vehicle.rigidBody = sphereBody;
 	vehicle.physicsWorld = world;
-
-	if ( spawn ) {
-
-		const [ sx, sy, sz ] = spawn.position;
-		vehicle.spherePos.set( sx, sy, sz );
-		vehicle.prevModelPos.set( sx, 0, sz );
-		vehicle.container.rotation.y = spawn.angle;
-
-	}
+	vehicle.spherePos.set( playerGrid.position[ 0 ], playerGrid.position[ 1 ], playerGrid.position[ 2 ] );
+	vehicle.prevModelPos.set( playerGrid.position[ 0 ], 0, playerGrid.position[ 2 ] );
+	vehicle.container.rotation.y = playerGrid.angle;
 
 	const vehicleGroup = vehicle.init( models[ 'vehicle-truck-yellow' ] );
 	gameContainer.add( vehicleGroup );
+
+	// ─── AI Vehicles ─────────────────────────────────────────────
+	const AI_MODELS_POOL = [ 'vehicle-truck-green', 'vehicle-truck-purple', 'vehicle-truck-red' ];
+	const aiVehicles = Array.from( { length: TOTAL_CARS - 1 }, ( _, i ) => {
+
+		const gridSlot = startGrid ? startGrid[ i ] : { position: [ 3.5, 0.5, 5 ], angle: 0, startCell: 0 };
+		const modelName = AI_MODELS_POOL[ i % AI_MODELS_POOL.length ];
+
+		const aiBody = createSphereBody( world, gridSlot.position );
+		const ai = new AIVehicle( raceLine, 'medium' );
+		ai.rigidBody = aiBody;
+		ai.physicsWorld = world;
+		ai.spherePos.set( gridSlot.position[ 0 ], gridSlot.position[ 1 ], gridSlot.position[ 2 ] );
+		ai.prevModelPos.set( gridSlot.position[ 0 ], 0, gridSlot.position[ 2 ] );
+		ai.container.rotation.y = gridSlot.angle;
+
+		const aiGroup = ai.init( models[ modelName ] );
+		gameContainer.add( aiGroup );
+
+		return ai;
+
+	} );
+
+	// ─── Register racers with RaceManager ─────────────────────
+	const playerRacer = raceManager.addRacer( vehicle, true );
+	playerRacer.currentCellIndex = playerGrid.startCell;
+
+	for ( let i = 0; i < aiVehicles.length; i ++ ) {
+
+		const aiRacer = raceManager.addRacer( aiVehicles[ i ], false );
+		aiRacer.currentCellIndex = ( startGrid ? startGrid[ i ] : { startCell: 0 } ).startCell;
+
+	}
 
 	dirLight.target = vehicleGroup;
 
@@ -307,13 +416,43 @@ async function init() {
 
 		const isXR = renderer.xr.isPresenting;
 
-		const input = isXR
+		let input = isXR
 			? ( xr.getInput() ?? { x: 0, z: 0 } )
 			: controls.update();
+
+		// Race system update
+		const raceState = raceManager.update( dt );
+
+		if ( raceState.lockControls ) {
+
+			input = { x: 0, z: 0 };
+
+		}
+
+		raceHUD.update( raceManager );
 
 		updateWorld( world, contactListener, dt );
 
 		vehicle.update( dt, input );
+
+		// AI vehicles update only while racing
+		if ( raceManager.state === RaceState.RACING ) {
+
+			for ( const ai of aiVehicles ) {
+
+				ai.updateAI( dt );
+
+			}
+
+		} else {
+
+			for ( const ai of aiVehicles ) {
+
+				ai.update( dt, { x: 0, z: 0, boost: false } );
+
+			}
+
+		}
 
 		if ( isXR ) xr.update( frame );
 
